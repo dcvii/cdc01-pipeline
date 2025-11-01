@@ -20,6 +20,8 @@ class VehicleState:
     trip_id: str
     last_odometer_km: float
     last_ts: pendulum.DateTime
+    home_lat: float
+    home_lon: float
 
 
 class TelematicsEmitter:
@@ -32,9 +34,9 @@ class TelematicsEmitter:
         base_location: tuple[float, float] = (37.7749, -122.4194),
     ) -> None:
         self._faker = Faker()
+        self._rng = random.Random(seed)
         if seed is not None:
-            Faker.seed(seed)
-            random.seed(seed)
+            self._faker.seed_instance(seed)
         self._base_lat, self._base_lon = base_location
 
         if fleet:
@@ -48,8 +50,10 @@ class TelematicsEmitter:
             vin: VehicleState(
                 vin=vin,
                 trip_id=str(uuid.uuid4()),
-                last_odometer_km=random.uniform(0, 200_000) / 10.0,
-                last_ts=now.subtract(minutes=random.randint(0, 15)),
+                last_odometer_km=self._rng.uniform(0, 200_000) / 10.0,
+                last_ts=now.subtract(minutes=self._rng.randint(0, 15)),
+                home_lat=self._base_lat + self._rng.uniform(-0.05, 0.05),
+                home_lon=self._base_lon + self._rng.uniform(-0.05, 0.05),
             )
             for vin in self._fleet
         }
@@ -57,36 +61,36 @@ class TelematicsEmitter:
     def events(self, batch_size: int = 1) -> Iterator[dict]:
         """Yield a batch of telematics events across the fleet."""
 
-        vins = random.sample(self._fleet, k=min(batch_size, len(self._fleet)))
-        for vin in vins:
+        if not self._fleet:
+            return
+
+        for vin in self._rng.choices(self._fleet, k=batch_size):
             yield self._next_event(vin)
 
     def _next_event(self, vin: str) -> dict:
         state = self._state[vin]
 
-        gap_seconds = random.choice((1, 2, 3, 5, 10))
+        gap_seconds = self._rng.choice((1, 2, 3, 5, 10))
         ts = state.last_ts.add(seconds=gap_seconds)
 
         # Movement deltas
-        speed_kph = max(0.0, random.gauss(65, 20))
-        heading_deg = random.uniform(0, 360)
+        speed_kph = max(0.0, self._rng.gauss(65, 20))
+        heading_deg = self._rng.uniform(0, 360)
         odometer = max(state.last_odometer_km + speed_kph * (gap_seconds / 3600.0), 0.0)
 
-        latitude = self._base_lat + random.uniform(-0.05, 0.05)
-        longitude = self._base_lon + random.uniform(-0.05, 0.05)
-        altitude_m = max(0.0, random.gauss(20, 5))
+        latitude = state.home_lat + self._rng.uniform(-0.01, 0.01)
+        longitude = state.home_lon + self._rng.uniform(-0.01, 0.01)
+        altitude_m = max(0.0, self._rng.gauss(20, 5))
 
         tire_pressure = {
-            "fl": random.randint(200, 240),
-            "fr": random.randint(200, 240),
-            "rl": random.randint(200, 240),
-            "rr": random.randint(200, 240),
+            "fl": self._rng.randint(200, 240),
+            "fr": self._rng.randint(200, 240),
+            "rl": self._rng.randint(200, 240),
+            "rr": self._rng.randint(200, 240),
         }
 
-        accel = {
-            axis: round(random.uniform(-1.5, 1.5), 2) for axis in ("x", "y", "z")
-        }
-        accel["z"] = round(9.81 + random.uniform(-0.2, 0.2), 2)
+        accel = {axis: round(self._rng.uniform(-1.5, 1.5), 2) for axis in ("x", "y", "z")}
+        accel["z"] = round(9.81 + self._rng.uniform(-0.2, 0.2), 2)
 
         event = {
             "event_id": str(uuid.uuid4()),
@@ -100,19 +104,19 @@ class TelematicsEmitter:
             "speed_kph": round(speed_kph, 1),
             "heading_deg": round(heading_deg, 1),
             "odometer_km": round(odometer, 1),
-            "engine_rpm": int(max(0, random.gauss(2200, 600))),
-            "throttle_pct": round(random.uniform(0, 100), 1),
-            "brake_active": random.random() < 0.1,
-            "fuel_level_pct": round(max(0.0, random.gauss(60, 5)), 1),
-            "coolant_temp_c": round(random.gauss(90, 5), 1),
-            "battery_voltage_v": round(random.gauss(13.8, 0.2), 2),
+            "engine_rpm": int(max(0, self._rng.gauss(2200, 600))),
+            "throttle_pct": round(self._rng.uniform(0, 100), 1),
+            "brake_active": self._rng.random() < 0.1,
+            "fuel_level_pct": round(max(0.0, self._rng.gauss(60, 5)), 1),
+            "coolant_temp_c": round(self._rng.gauss(90, 5), 1),
+            "battery_voltage_v": round(self._rng.gauss(13.8, 0.2), 2),
             "tire_pressure_kpa": tire_pressure,
             "accel_m_s2": accel,
             "geo_hash": geohash2.encode(latitude, longitude, precision=7),
         }
 
         # Update vehicle state
-        if random.random() < 0.02:
+        if self._rng.random() < 0.02:
             # Occasionally roll a new trip id to simulate ignition cycle.
             state.trip_id = str(uuid.uuid4())
 
