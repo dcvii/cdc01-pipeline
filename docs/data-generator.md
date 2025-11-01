@@ -3,7 +3,13 @@
 Run the generator with `uv` from the repo root:
 
 ```sh
-uv run --project tools/telematics_generator telematics-generator --interval 2 --out data/raw/telematics/telematics.jsonl --iterations 10 --batch-size 3 --seed 42
+uv run --project tools/telematics_generator telematics-generator \
+  --interval 2 \
+  --out data/raw/telematics/telematics.jsonl \
+  --iterations 10 \
+  --batch-size 3 \
+  --seed 42 \
+  --max-file-events 500
 ```
 
 Flags:
@@ -13,5 +19,8 @@ Flags:
 - `--iterations`: stop after N batches (default `0` emits forever).
 - `--vin`: specify VINs to simulate; omit to auto-generate a fleet of five.
 - `--seed`: deterministic Faker output.
+- `--center-lat` / `--center-lon`: adjust the fleet's home location.
+- `--max-file-events`: rotate file output after N events (keeps `_0001.jsonl` suffixes).
+- `--no-validate`: disable schema validation if you need raw speed.
 
 Schema details live in `context/data_source.md`.
